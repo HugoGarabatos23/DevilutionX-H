@@ -3,6 +3,7 @@ include(functions/devilutionx_library)
 include(functions/genex)
 
 set(libdevilutionx_SRCS
+  ai_agent.cpp
   appfat.cpp
   automap.cpp
   capture.cpp

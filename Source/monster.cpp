@@ -4256,6 +4256,13 @@ void RemoveEnemyReferences(const Player &player)
 
 void ProcessMonsters()
 {
+	// Bucle para limpiar las casillas de colisión y marcar enemigos como inválidos
+	for (size_t i = 0; i < ActiveMonsterCount; i++) {
+		Monster &monster = Monsters[ActiveMonsters[i]];
+		dMonster[monster.position.tile.x][monster.position.tile.y] = 0; // Libera la casilla física
+		monster.isInvalid = true;                                       // El motor lo eliminará en la siguiente línea
+	}
+
 	DeleteMonsterList();
 
 	assert(ActiveMonsterCount <= MaxMonsters);

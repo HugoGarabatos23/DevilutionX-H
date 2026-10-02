@@ -32,6 +32,7 @@
 #include "debug.h"
 #endif
 #include "DiabloUI/diabloui.h"
+#include "ai_agent.h"
 #include "controls/control_mode.hpp"
 #include "controls/keymapper.hpp"
 #include "controls/plrctrls.h"
@@ -3497,8 +3498,12 @@ bool game_loop(bool bStartup)
 			return false;
 		}
 		TimeoutCursor(false);
-		GameLogic();
+		GameLogic(); // actualizacion de todo el estado 
 		ClearLastSentPlayerCmd();
+
+		// entramos por aqui con el lock-Step 
+
+		AIAgent::SyncTick();
 
 		if (!gbRunGame || !gbIsMultiplayer || demo::IsRunning() || demo::IsRecording() || !nthread_has_500ms_passed())
 			break;
