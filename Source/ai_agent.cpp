@@ -13,6 +13,8 @@
 #include "objects.h"
 #include "player.h"
 #include "quests.h"
+#include "items.h"
+#include "tables/itemdat.h"
 #include "utils/paths.h"
 
 
@@ -28,7 +30,7 @@ enum EnvironmentFlag : uint32_t {
 	Env_Door = 1 << 5,
 	Env_Missile = 1 << 6,
 	Env_Monster = 1 << 7,
-	Env_UnknownObject = 1 << 8,
+	Env_OtherSolidObjects = 1 << 8,
 	Env_Crucifix = 1 << 9,
 	Env_Barrel = 1 << 10,
 	Env_Chest = 1 << 11,
@@ -44,6 +46,12 @@ enum EnvironmentFlag : uint32_t {
 	Env_Shrine = 1 << 21,   // Santuarios estándar (conocidos/predecibles)
 	Env_Hazard = 1 << 22,  // Goat Shrine / Cauldron (efectos aleatorios / alto riesgo)
 	Env_Fountain = 1 << 23, // Fuentes de vida, maná o purificación
+	Env_Bookcase = 1 << 24,
+	Env_Gold = 1ull << 25,
+	Env_Equipment = 1ull << 26,
+	Env_Potion = 1ull << 27,
+	Env_MagicText = 1ull << 28,
+	Env_QuestItem = 1ull << 29,
 };
 
 void AIAgent::SyncTick()
@@ -84,11 +92,11 @@ void AIAgent::DumpStateToJSON()
 		json << "    [";
 		for (int x = 0; x < MAXDUNX; x++) {
 			Point pt = { x, y };
-			uint32_t cellMask = 0;
+			uint64_t cellMask = 0;
 
 			bool isExplored = (static_cast<int>(dFlags[x][y]) & static_cast<int>(DungeonFlag::Explored)) != 0;
 			bool isLit = (static_cast<int>(dFlags[x][y]) & static_cast<int>(DungeonFlag::Lit)) != 0;
-			bool isNear = (std::abs(x - px) <= 12 && std::abs(y - py) <= 12);
+			bool isNear = (std::abs(x - px) <= 12 && std::abs(y - py) <= 7);
 
 			if (isExplored) {
 				cellMask |= Env_Explored;
@@ -123,16 +131,21 @@ void AIAgent::DumpStateToJSON()
 				}
 
 				if (dObject[x][y] != 0) {
-					int objIndex = std::abs(dObject[x][y]) - 1;
-					auto &obj = Objects[objIndex];
-					auto otype = obj._otype;
+					int oid = dObject[x][y];
+					int oi = (oid > 0 ? oid : -oid) - 1;
+					auto &obj = Objects[oi];
+					_object_id otype = obj._otype;
+
+					// --- INYECCIÓN DE RAYOS X ---
+					// Empaquetamos el ID del objeto en los bits 24-31 de la máscara
+					cellMask |= ((static_cast<uint64_t>(otype) & 0xFF) << 56);
+					// ----------------------------
 
 					bool isOpen = false;
 					bool isInteractable = false;
 					bool isDestroyed = false; // Bandera para barriles que desaparecen como obstáculo
 
-
-					 // 1. EVALUAR ESTADO SEGÚN EL TIPO DE OBJETO
+					// 1. EVALUAR ESTADO SEGÚN EL TIPO DE OBJETO
 					if (otype == OBJ_L1LDOOR || otype == OBJ_L1RDOOR || otype == OBJ_L2LDOOR || otype == OBJ_L2RDOOR || otype == OBJ_L3LDOOR || otype == OBJ_L3RDOOR) {
 						isOpen = (obj._oVar4 == 1);
 						isInteractable = true;
@@ -141,7 +154,6 @@ void AIAgent::DumpStateToJSON()
 						if (!isDestroyed) {
 							isInteractable = (dObject[x][y] > 0);
 						}
-					
 					} else if (otype == OBJ_SARC) {
 						// El sarcófago SOLO depende de si su animación de abrirse ha terminado
 						isOpen = (obj._oAnimFrame == obj._oAnimLen);
@@ -150,12 +162,15 @@ void AIAgent::DumpStateToJSON()
 						// El cofre SOLO depende de la variable interna de estado
 						isOpen = (obj.selectionRegion == SelectionRegion::None);
 						isInteractable = (!isOpen) && (dObject[x][y] > 0);
+					} else if (otype == OBJ_BOOKCASEL || otype == OBJ_BOOKCASER || otype == OBJ_BOOKSTAND || otype == OBJ_BOOKCANDLE) {
+						// Las librerías y atriles pierden su hitbox al soltar el libro
+						isOpen = (obj.selectionRegion == SelectionRegion::None);
+						isInteractable = (!isOpen) && (dObject[x][y] > 0);
 					} else {
 						// Santuarios, fuentes y restos de objetos genéricos interactuables
 						isOpen = false;
 						isInteractable = (dObject[x][y] > 0);
 					}
-
 
 					// 2. APLICAR MASKS DE ESTADO Y TIPO
 					if (!isDestroyed) {
@@ -168,9 +183,11 @@ void AIAgent::DumpStateToJSON()
 
 						// 3. TIPO DE OBJETO
 						if (otype == OBJ_L1LDOOR || otype == OBJ_L1RDOOR || otype == OBJ_L2LDOOR || otype == OBJ_L2RDOOR || otype == OBJ_L3LDOOR || otype == OBJ_L3RDOOR) {
-							cellMask |= Env_Door;
 						} else if (otype == OBJ_CHEST1 || otype == OBJ_CHEST2 || otype == OBJ_CHEST3) {
+							// Englobamos cofres, librerías grandes y atriles de hechizos
 							cellMask |= Env_Chest;
+						} else if (otype == OBJ_BOOKCASEL || otype == OBJ_BOOKCASER || otype == OBJ_BOOKSTAND || otype == OBJ_BOOKCANDLE) {
+							cellMask |= Env_Bookcase;
 						} else if (otype == OBJ_BARREL || otype == OBJ_BARRELEX) {
 							cellMask |= Env_Barrel;
 						} else if (otype == OBJ_SARC) {
@@ -186,17 +203,45 @@ void AIAgent::DumpStateToJSON()
 						} else if (otype == OBJ_BLOODFTN || otype == OBJ_PURIFYINGFTN || otype == OBJ_MURKYFTN || otype == OBJ_TEARFTN) {
 							// Forzamos la detección explícita de la fuente de sangre aquí
 							cellMask |= Env_Fountain;
+						} else if (otype == 0) {
+							// IGNORAR ABSOLUTO: Es luz invisible. Para la IA es suelo vacío. No hacemos nada.
+						} else if (otype >= OBJ_TNUDEM1 && otype <= OBJ_TORTURE5) {
+							// Silenciador masivo para atrezo de tortura: la IA los registra como muros/obstáculos sólidos.
+							cellMask |= Env_OtherSolidObjects;
+
+						} else if (otype == OBJ_CANDLE1 || otype == OBJ_CANDLE2 || otype == OBJ_TBCROSS)
+							{
+							// Elementos de luz físicos: Son obstáculos sólidos del escenario. 
+							cellMask |= Env_OtherSolidObjects;
+
 						} else {
 							if (!AllObjects[otype].isSolid()) {
 								cellMask |= Env_Decor;
 							} else {
-								cellMask |= Env_UnknownObject;
+								cellMask |= Env_OtherSolidObjects;
 							}
 						}
 					}
 
 					if (dItem[x][y] != 0) {
-						cellMask |= Env_Item;
+						int dItemId = dItem[x][y];
+						int iid = (dItemId > 0 ? dItemId : -dItemId) - 1; // Soporta índices negativos si el motor los usa
+						auto &item = Items[iid];   // Accedemos al ítem real en memoria
+
+						if (item.isGold()) { 
+							cellMask |= Env_Gold;
+						} else if (item._iClass == ICLASS_QUEST) { 
+							cellMask |= Env_QuestItem;
+						} else if (item.isEquipment()) { 
+							cellMask |= Env_Equipment;
+						} else if (item._iMiscId == IMISC_BOOK || item.isScroll()) { 
+							cellMask |= Env_MagicText;
+						} else if (item._iMiscId == IMISC_HEAL || item._iMiscId == IMISC_MANA || item._iMiscId == IMISC_REJUV || item._iMiscId == IMISC_FULLHEAL || item._iMiscId == IMISC_FULLMANA || item._iMiscId == IMISC_FULLREJUV) { //[cite: 7, 8]
+							cellMask |= Env_Potion;
+						} else {
+							cellMask |= Env_Item; // Fallback genérico para runas, aceites, orejas, etc.
+						}
+						
 					}
 				}
 
