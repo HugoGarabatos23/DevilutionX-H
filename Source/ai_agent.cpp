@@ -96,7 +96,7 @@ void AIAgent::DumpStateToJSON()
 
 			bool isExplored = (static_cast<int>(dFlags[x][y]) & static_cast<int>(DungeonFlag::Explored)) != 0;
 			bool isLit = (static_cast<int>(dFlags[x][y]) & static_cast<int>(DungeonFlag::Lit)) != 0;
-			bool isNear = (std::abs(x - px) <= 12 && std::abs(y - py) <= 7);
+			bool isNear = (std::abs(x - px) <= 7 && std::abs(y - py) <= 7);
 
 			if (isExplored) {
 				cellMask |= Env_Explored;
@@ -246,7 +246,7 @@ void AIAgent::DumpStateToJSON()
 				}
 
 				if ((cellMask & Env_Visible) != 0) {
-					if (dPlayer[x][y] != 0) {
+					if (x == px && y == py) {
 						cellMask |= Env_Player;
 					}
 					if (dMonster[x][y] != 0) {
