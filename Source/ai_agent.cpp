@@ -183,6 +183,7 @@ void AIAgent::DumpStateToJSON()
 
 						// 3. TIPO DE OBJETO
 						if (otype == OBJ_L1LDOOR || otype == OBJ_L1RDOOR || otype == OBJ_L2LDOOR || otype == OBJ_L2RDOOR || otype == OBJ_L3LDOOR || otype == OBJ_L3RDOOR) {
+							cellMask |= Env_Door;
 						} else if (otype == OBJ_CHEST1 || otype == OBJ_CHEST2 || otype == OBJ_CHEST3) {
 							// Englobamos cofres, librerías grandes y atriles de hechizos
 							cellMask |= Env_Chest;
