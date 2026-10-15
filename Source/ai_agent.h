@@ -9,7 +9,10 @@ public:
 
 private:
 	// Función interna para volcar el estado
-	static void DumpStateToJSON();
+	static void DumpStateToJSON(bool isIdle);
+
+	// Función interna para leer y consumir las órdenes de Python
+	static void ReadActionFromJSON();
 };
 
 } // namespace devilution

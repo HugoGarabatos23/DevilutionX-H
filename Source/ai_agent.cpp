@@ -54,15 +54,61 @@ enum EnvironmentFlag : uint32_t {
 	Env_QuestItem = 1ull << 29,
 };
 
+void AIAgent::ReadActionFromJSON()
+{
+	std::string actionPath = paths::PrefPath() + "ai_action.json";
+	std::ifstream in(actionPath);
+	if (!in.is_open()) return;
+
+	std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+	in.close();
+
+	if (content.empty()) return;
+
+	size_t actPos = content.find("\"action\":");
+	size_t xPos = content.find("\"x\":");
+	size_t yPos = content.find("\"y\":");
+
+	if (actPos != std::string::npos && xPos != std::string::npos && yPos != std::string::npos) {
+		int targetX = std::stoi(content.substr(xPos + 4));
+		int targetY = std::stoi(content.substr(yPos + 4));
+		Point target = { targetX, targetY };
+
+		if (content.find("\"mover\"") != std::string::npos) {
+			NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, target);
+		} else if (content.find("\"interactuar\"") != std::string::npos) {
+			NetSendCmdLoc(MyPlayerId, true, CMD_OPOBJXY, target);
+		}
+	}
+
+	// Truncamos/vaciamos el archivo para consumir la orden y no repetir el comando
+	std::ofstream clearFile(actionPath, std::ofstream::trunc);
+	clearFile.close();
+}
+
 void AIAgent::SyncTick()
 {
-	static int tickCounter = 0;
-	if (tickCounter++ % 50 == 0) {
-		DumpStateToJSON();
+	ReadActionFromJSON();
+
+	Player &myPlayer = Players[MyPlayerId];
+	bool isIdle = (myPlayer._pmode == PM_STAND);
+
+	static int idleTicks = 0;
+
+	if (isIdle) {
+		idleTicks++;
+		// idleTicks == 1 -> Acaba de terminar el paso en este exacto milisegundo (Disparo instantáneo)
+		// idleTicks % 15 == 0 -> Sigue quieto esperando órdenes (Latido de seguridad cada 0.75s)
+		if (idleTicks == 1 || idleTicks % 15 == 0) {
+			DumpStateToJSON(isIdle);
+		}
+	} else {
+		// Está caminando: prohibido tocar el disco duro para no dar tirones de FPS
+		idleTicks = 0;
 	}
 }
 
-void AIAgent::DumpStateToJSON()
+void AIAgent::DumpStateToJSON(bool isIdle)
 {
 	std::string dumpPath = paths::PrefPath() + "ai_state.json";
 	std::ofstream out(dumpPath);
@@ -73,13 +119,15 @@ void AIAgent::DumpStateToJSON()
 	std::stringstream json;
 	json << "{\n";
 
-	// 1. INFO DEL PERSONAJE
+	// 1. INFO DEL PERSONAJE EN NIVEL
+	json << "  \"level\": " << static_cast<int>(currlevel) << ",\n";
 	json << "  \"player\": {\n";
 	json << "    \"x\": " << static_cast<int>(myPlayer.position.tile.x) << ",\n";
 	json << "    \"y\": " << static_cast<int>(myPlayer.position.tile.y) << ",\n";
 	json << "    \"hp\": " << static_cast<int>(myPlayer._pHitPoints >> 6) << ",\n";
 	json << "    \"max_hp\": " << static_cast<int>(myPlayer._pMaxHP >> 6) << ",\n";
-	json << "    \"mana\": " << static_cast<int>(myPlayer._pMana >> 6) << "\n";
+	json << "    \"mana\": " << static_cast<int>(myPlayer._pMana >> 6) << ",\n";
+	json << "    \"is_idle\": " << (isIdle ? "true" : "false") << "\n"; // <-- Inyección del estado para Python
 	json << "  },\n";
 
 	// 2. MATRIZ DEL MAPA (Bitmasks)
