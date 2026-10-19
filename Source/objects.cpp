@@ -4008,6 +4008,12 @@ std::expected<void, std::string> SetMapObjects(const uint16_t *dunData, int star
 
 Object *AddObject(_object_id objType, Point objPos)
 {
+	// --- PARCHE TFG: Filtrar barriles, urnas y vainas ---
+	if (objType == OBJ_BARREL || objType == OBJ_BARRELEX || objType == OBJ_POD || objType == OBJ_PODEX || objType == OBJ_URN || objType == OBJ_URNEX) {
+		return nullptr;
+	}
+	// ----------------------------------------------------
+
 	if (ActiveObjectCount >= MAXOBJECTS)
 		return nullptr;
 
