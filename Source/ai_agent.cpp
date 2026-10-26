@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 
+#include "diablo.h"
 #include "items.h"
 #include "levels/gendung.h"
 #include "levels/tile_properties.hpp"
@@ -121,6 +122,7 @@ void AIAgent::DumpStateToJSON(bool isIdle)
 
 	// 1. INFO DEL PERSONAJE EN NIVEL
 	json << "  \"level\": " << static_cast<int>(currlevel) << ",\n";
+	json << "  \"seed\": " << static_cast<uint32_t>(DungeonSeeds[currlevel]) << ",\n";
 	json << "  \"player\": {\n";
 	json << "    \"x\": " << static_cast<int>(myPlayer.position.tile.x) << ",\n";
 	json << "    \"y\": " << static_cast<int>(myPlayer.position.tile.y) << ",\n";
