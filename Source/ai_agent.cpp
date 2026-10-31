@@ -17,6 +17,8 @@
 #include "items.h"
 #include "tables/itemdat.h"
 #include "utils/paths.h"
+#include "interfac.h"
+#include "utils/sdl_compat.h"
 
 
 namespace devilution {
@@ -55,6 +57,8 @@ enum EnvironmentFlag : uint32_t {
 	Env_QuestItem = 1ull << 29,
 };
 
+static bool waitingForLevelReset = false;
+
 void AIAgent::ReadActionFromJSON()
 {
 	std::string actionPath = paths::PrefPath() + "ai_action.json";
@@ -65,6 +69,39 @@ void AIAgent::ReadActionFromJSON()
 	in.close();
 
 	if (content.empty()) return;
+
+	// Truncamos primero el archivo para asegurarnos de consumir la orden
+	std::ofstream clearFile(actionPath, std::ofstream::trunc);
+	clearFile.close();
+
+	if (content.find("\"reiniciar_nivel\"") != std::string::npos) {
+		Player &myPlayer = Players[MyPlayerId];
+
+		// 1. Aseguramos que estamos en el nivel de entrenamiento (Nivel 1 - Catedral)
+		currlevel = 1;
+		leveltype = DTYPE_CATHEDRAL;
+		myPlayer.plrlevel = currlevel;
+		setlevel = false;
+
+		// 2. Borramos todas las banderas de nivel visitado del jugador
+		for (int i = 0; i < NUMLEVELS; i++) {
+			myPlayer._pLvlVisited[i] = false;
+		}
+
+		// 3. Restauramos la vida al máximo
+		myPlayer._pHitPoints = myPlayer._pMaxHP;
+		myPlayer._pHPBase = myPlayer._pMaxHPBase;
+
+		// 4. Activamos cerrojo para no volcar JSON hasta terminar la recarga
+		waitingForLevelReset = true;
+
+		// 5. WM_DIABNEWGAME borra los archivos temporales (pfile_remove_temp_files)
+		// y fuerza LoadGameLevel(true, ENTRY_MAIN), reseteando Automap y dFlags al 100%
+		SDL_Event event;
+		CustomEventToSdlEvent(event, WM_DIABNEWGAME);
+		SDLC_PushEvent(&event);
+		return;
+	}
 
 	size_t actPos = content.find("\"action\":");
 	size_t xPos = content.find("\"x\":");
@@ -81,15 +118,24 @@ void AIAgent::ReadActionFromJSON()
 			NetSendCmdLoc(MyPlayerId, true, CMD_OPOBJXY, target);
 		}
 	}
-
-	// Truncamos/vaciamos el archivo para consumir la orden y no repetir el comando
-	std::ofstream clearFile(actionPath, std::ofstream::trunc);
-	clearFile.close();
 }
 
 void AIAgent::SyncTick()
 {
+	// Si acabamos de pedir un reset, el evento SDL se procesa al salir de game_loop.
+	// Cuando vuelve aquí en el siguiente frame, el nivel ya está limpio y recargado.
+	if (waitingForLevelReset) {
+		waitingForLevelReset = false;
+		DumpStateToJSON(true);
+		return;
+	}
+
 	ReadActionFromJSON();
+
+	if (waitingForLevelReset) {
+		// Acabamos de encolar WM_DIABNEWGAME en este tick. No volcamos el mapa viejo.
+		return;
+	}
 
 	Player &myPlayer = Players[MyPlayerId];
 	bool isIdle = (myPlayer._pmode == PM_STAND);
@@ -98,13 +144,10 @@ void AIAgent::SyncTick()
 
 	if (isIdle) {
 		idleTicks++;
-		// idleTicks == 1 -> Acaba de terminar el paso en este exacto milisegundo (Disparo instantáneo)
-		// idleTicks % 15 == 0 -> Sigue quieto esperando órdenes (Latido de seguridad cada 0.75s)
 		if (idleTicks == 1 || idleTicks % 15 == 0) {
 			DumpStateToJSON(isIdle);
 		}
 	} else {
-		// Está caminando: prohibido tocar el disco duro para no dar tirones de FPS
 		idleTicks = 0;
 	}
 }
