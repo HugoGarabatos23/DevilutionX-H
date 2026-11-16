@@ -126,7 +126,11 @@ void AIAgent::SyncTick()
 	// Cuando vuelve aquí en el siguiente frame, el nivel ya está limpio y recargado.
 	if (waitingForLevelReset) {
 		waitingForLevelReset = false;
-		DumpStateToJSON(true);
+		// 3.Generar la "Vista de Dios" para el A* de Python
+		DumpStateToJSON(true, true);
+
+		// Generar la "Vista del Agente" con niebla para empezar a jugar
+		DumpStateToJSON(true, false);
 		return;
 	}
 
@@ -152,9 +156,11 @@ void AIAgent::SyncTick()
 	}
 }
 
-void AIAgent::DumpStateToJSON(bool isIdle)
+void AIAgent::DumpStateToJSON(bool isIdle, bool isRawMap)
 {
-	std::string dumpPath = paths::PrefPath() + "ai_state.json";
+	// 1. Escribir en un archivo distinto si es el mapa crudo
+	std::string fileName = isRawMap ? "ai_raw_map.json" : "ai_state.json";
+	std::string dumpPath = paths::PrefPath() + fileName;
 	std::ofstream out(dumpPath);
 	if (!out.is_open()) return;
 
@@ -190,6 +196,13 @@ void AIAgent::DumpStateToJSON(bool isIdle)
 			bool isExplored = (static_cast<int>(dFlags[x][y]) & static_cast<int>(DungeonFlag::Explored)) != 0;
 			bool isLit = (static_cast<int>(dFlags[x][y]) & static_cast<int>(DungeonFlag::Lit)) != 0;
 			bool isNear = (std::abs(x - px) <= 7 && std::abs(y - py) <= 7);
+
+			// Si flag mapa crudo, desvelamos todo
+			if (isRawMap) {
+				isExplored = true;
+				isLit = true;
+				isNear = true;
+			}
 
 			if (isExplored) {
 				cellMask |= Env_Explored;

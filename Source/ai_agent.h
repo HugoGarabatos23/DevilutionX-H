@@ -8,8 +8,8 @@ public:
 	static void SyncTick();
 
 private:
-	// Función interna para volcar el estado
-	static void DumpStateToJSON(bool isIdle);
+	// Función interna para volcar el estado, rawmap para procesar si tiene salida al inciio del nivel
+	static void DumpStateToJSON(bool isIdle, bool isRawMap = false);
 
 	// Función interna para leer y consumir las órdenes de Python
 	static void ReadActionFromJSON();
