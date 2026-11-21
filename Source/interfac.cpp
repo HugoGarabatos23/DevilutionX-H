@@ -21,6 +21,7 @@
 #include <SDL.h>
 #endif
 
+#include "ai_agent.h"
 #include "control/control.hpp"
 #include "controls/input.h"
 #include "engine/clx_sprite.hpp"
@@ -324,6 +325,7 @@ void DoLoad(interface_mode uMsg)
 		if (loadResult.has_value()) IncProgress(2);
 		break;
 	case WM_DIABNEWGAME:
+		AIAgent::PrepareNewGame();
 		myPlayer.pOriginalCathedral = !gbIsHellfire;
 		IncProgress();
 		FreeGameMem();
