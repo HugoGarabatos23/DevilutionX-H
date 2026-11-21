@@ -1,5 +1,17 @@
 #include "ai_agent.h"
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <cstdio>
+#endif
+
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -205,7 +217,8 @@ void AIAgent::DumpStateToJSON(bool isIdle, bool isRawMap)
 	// 1. Escribir en un archivo distinto si es el mapa crudo
 	std::string fileName = isRawMap ? "ai_raw_map.json" : "ai_state.json";
 	std::string dumpPath = paths::PrefPath() + fileName;
-	std::ofstream out(dumpPath);
+	std::string tmpPath = dumpPath + ".tmp";
+	std::ofstream out(tmpPath);
 	if (!out.is_open()) return;
 
 	Player &myPlayer = Players[MyPlayerId];
@@ -420,6 +433,11 @@ void AIAgent::DumpStateToJSON(bool isIdle, bool isRawMap)
 
 	out << json.str();
 	out.close();
+#ifdef _WIN32
+	MoveFileExA(tmpPath.c_str(), dumpPath.c_str(), MOVEFILE_REPLACE_EXISTING);
+#else
+	std::rename(tmpPath.c_str(), dumpPath.c_str());
+#endif
 }
 
 } // namespace devilution
