@@ -140,6 +140,17 @@ void AIAgent::PrepareNewGame()
 	DungeonSeeds[0] = GenerateSeed();
 
 	InitLevels();
+
+	if (MyPlayer != nullptr) {
+		for (bool &levelVisited : MyPlayer->_pLvlVisited) {
+			levelVisited = false;
+		}
+		for (bool &subLevelVisited : MyPlayer->_pSLvlVisited) {
+			subLevelVisited = false;
+		}
+		MyPlayer->pTownWarps = 0;
+	}
+
 	InitQuests();
 	InitPortals();
 	InitDungMsgs(*MyPlayer);
