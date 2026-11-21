@@ -6,6 +6,7 @@ class AIAgent {
 public:
 	// Función principal que llamaremos en cada frame
 	static void SyncTick();
+	static void PrepareNewGame();
 
 private:
 	// Función interna para volcar el estado, rawmap para procesar si tiene salida al inciio del nivel

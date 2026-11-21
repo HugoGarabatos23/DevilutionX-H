@@ -6,8 +6,10 @@
 #include <string>
 
 #include "diablo.h"
+#include "engine/random.hpp"
 #include "items.h"
 #include "levels/gendung.h"
+#include "levels/dun_tile_data.hpp"
 #include "levels/tile_properties.hpp"
 #include "levels/trigs.h"
 #include "monster.h"
@@ -18,6 +20,9 @@
 #include "tables/itemdat.h"
 #include "utils/paths.h"
 #include "interfac.h"
+#include "msg.h"
+#include "multi.h"
+#include "portal.h"
 #include "utils/sdl_compat.h"
 
 
@@ -58,6 +63,8 @@ enum EnvironmentFlag : uint32_t {
 };
 
 static bool waitingForLevelReset = false;
+static bool waitingForTownTransition = false;
+static bool newGameEventPending = false;
 
 void AIAgent::ReadActionFromJSON()
 {
@@ -74,29 +81,10 @@ void AIAgent::ReadActionFromJSON()
 	std::ofstream clearFile(actionPath, std::ofstream::trunc);
 	clearFile.close();
 
-	if (content.find("\"reiniciar_nivel\"") != std::string::npos) {
-		Player &myPlayer = Players[MyPlayerId];
-
-		// 1. Aseguramos que estamos en el nivel de entrenamiento (Nivel 1 - Catedral)
-		currlevel = 1;
-		leveltype = DTYPE_CATHEDRAL;
-		myPlayer.plrlevel = currlevel;
-		setlevel = false;
-
-		// 2. Borramos todas las banderas de nivel visitado del jugador
-		for (int i = 0; i < NUMLEVELS; i++) {
-			myPlayer._pLvlVisited[i] = false;
-		}
-
-		// 3. Restauramos la vida al máximo
-		myPlayer._pHitPoints = myPlayer._pMaxHP;
-		myPlayer._pHPBase = myPlayer._pMaxHPBase;
-
-		// 4. Activamos cerrojo para no volcar JSON hasta terminar la recarga
+	if (content.find("\"reiniciar_partida\"") != std::string::npos) {
 		waitingForLevelReset = true;
+		newGameEventPending = true;
 
-		// 5. WM_DIABNEWGAME borra los archivos temporales (pfile_remove_temp_files)
-		// y fuerza LoadGameLevel(true, ENTRY_MAIN), reseteando Automap y dFlags al 100%
 		SDL_Event event;
 		CustomEventToSdlEvent(event, WM_DIABNEWGAME);
 		SDLC_PushEvent(&event);
@@ -120,16 +108,55 @@ void AIAgent::ReadActionFromJSON()
 	}
 }
 
+void AIAgent::PrepareNewGame()
+{
+	if (!newGameEventPending)
+		return;
+
+	SetRndSeed(0);
+	InitGameInfo();
+	xoshiro128plusplus gameGenerator(sgGameInitInfo.gameSeed);
+	for (int i = 0; i < NUMLEVELS; i++) {
+		DungeonSeeds[i] = gameGenerator.next();
+		LevelSeeds[i] = std::nullopt;
+	}
+	DungeonSeeds[0] = GenerateSeed();
+
+	InitLevels();
+	InitQuests();
+	InitPortals();
+	InitDungMsgs(*MyPlayer);
+	DeltaSyncJunk();
+	newGameEventPending = false;
+}
+
 void AIAgent::SyncTick()
 {
-	// Si acabamos de pedir un reset, el evento SDL se procesa al salir de game_loop.
-	// Cuando vuelve aquí en el siguiente frame, el nivel ya está limpio y recargado.
+	if (newGameEventPending)
+		return;
+
 	if (waitingForLevelReset) {
 		waitingForLevelReset = false;
+		if (currlevel == 0) {
+			waitingForTownTransition = true;
+			StartNewLvl(*MyPlayer, WM_DIABNEXTLVL, 1);
+			return;
+		}
+
 		// 3.Generar la "Vista de Dios" para el A* de Python
 		DumpStateToJSON(true, true);
 
 		// Generar la "Vista del Agente" con niebla para empezar a jugar
+		DumpStateToJSON(true, false);
+		return;
+	}
+
+	if (waitingForTownTransition) {
+		if (currlevel == 0)
+			return;
+
+		waitingForTownTransition = false;
+		DumpStateToJSON(true, true);
 		DumpStateToJSON(true, false);
 		return;
 	}
