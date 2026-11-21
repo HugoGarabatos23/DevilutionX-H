@@ -65,6 +65,7 @@ enum EnvironmentFlag : uint32_t {
 static bool waitingForLevelReset = false;
 static bool waitingForTownTransition = false;
 static bool newGameEventPending = false;
+static int observedLevel = -1;
 
 void AIAgent::ReadActionFromJSON()
 {
@@ -81,17 +82,21 @@ void AIAgent::ReadActionFromJSON()
 	std::ofstream clearFile(actionPath, std::ofstream::trunc);
 	clearFile.close();
 
-	if (content.find("\"reiniciar_partida\"") != std::string::npos) {
-		waitingForLevelReset = true;
-		newGameEventPending = true;
+	size_t actPos = content.find("\"action\":");
+	if (actPos != std::string::npos) {
+		const size_t actionValuePos = content.find_first_not_of(" \t\r\n", actPos + 9);
+		constexpr char ResetAction[] = "\"reiniciar_partida\"";
+		if (actionValuePos != std::string::npos && content.compare(actionValuePos, sizeof(ResetAction) - 1, ResetAction) == 0) {
+			waitingForLevelReset = true;
+			newGameEventPending = true;
 
-		SDL_Event event;
-		CustomEventToSdlEvent(event, WM_DIABNEWGAME);
-		SDLC_PushEvent(&event);
-		return;
+			SDL_Event event;
+			CustomEventToSdlEvent(event, WM_DIABNEWGAME);
+			SDLC_PushEvent(&event);
+			return;
+		}
 	}
 
-	size_t actPos = content.find("\"action\":");
 	size_t xPos = content.find("\"x\":");
 	size_t yPos = content.find("\"y\":");
 
@@ -148,6 +153,7 @@ void AIAgent::SyncTick()
 
 		// Generar la "Vista del Agente" con niebla para empezar a jugar
 		DumpStateToJSON(true, false);
+		observedLevel = currlevel;
 		return;
 	}
 
@@ -158,6 +164,17 @@ void AIAgent::SyncTick()
 		waitingForTownTransition = false;
 		DumpStateToJSON(true, true);
 		DumpStateToJSON(true, false);
+		observedLevel = currlevel;
+		return;
+	}
+
+	if (observedLevel == -1) {
+		observedLevel = currlevel;
+	} else if (observedLevel != currlevel) {
+		// SyncTick se reanuda tras completar la carga del nivel.
+		DumpStateToJSON(true, true);
+		DumpStateToJSON(true, false);
+		observedLevel = currlevel;
 		return;
 	}
 
