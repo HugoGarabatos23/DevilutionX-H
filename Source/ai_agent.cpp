@@ -78,6 +78,7 @@ static bool waitingForLevelReset = false;
 static bool waitingForTownTransition = false;
 static bool newGameEventPending = false;
 static int observedLevel = -1;
+static int idleTicks = 0;
 
 void AIAgent::ReadActionFromJSON()
 {
@@ -119,8 +120,10 @@ void AIAgent::ReadActionFromJSON()
 
 		if (content.find("\"mover\"") != std::string::npos) {
 			NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, target);
+			idleTicks = -2;
 		} else if (content.find("\"interactuar\"") != std::string::npos) {
 			NetSendCmdLoc(MyPlayerId, true, CMD_OPOBJXY, target);
+			idleTicks = -2;
 		}
 	}
 }
@@ -211,11 +214,9 @@ void AIAgent::SyncTick()
 	Player &myPlayer = Players[MyPlayerId];
 	bool isIdle = (myPlayer._pmode == PM_STAND);
 
-	static int idleTicks = 0;
-
 	if (isIdle) {
 		idleTicks++;
-		if (idleTicks == 1 || idleTicks % 15 == 0) {
+		if (idleTicks == 1 || (idleTicks > 0 && idleTicks % 15 == 0)) {
 			DumpStateToJSON(isIdle);
 		}
 	} else {
